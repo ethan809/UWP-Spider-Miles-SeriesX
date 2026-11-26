@@ -9,6 +9,12 @@ on:
       - 'tests/test_inspect_miles.py'
       - 'tests/test_pe_imports.py'
       - 'tests/test_runtime_gap.py'
+      - 'tests/test_miles_steam_source.py'
+      - 'source/SteamDownload.cs'
+      - 'source/SteamTransfer/SteamSession.cs'
+      - 'source/SteamTransfer/TransferCore.cs'
+      - 'source/MainPage.xaml'
+      - 'source/MainPage.xaml.cs'
       - 'source/GameVersionSupport.cs'
       - 'source/ImportEngine.cs'
       - 'source/FolderImportEngine.cs'
@@ -23,6 +29,12 @@ on:
       - 'tests/test_inspect_miles.py'
       - 'tests/test_pe_imports.py'
       - 'tests/test_runtime_gap.py'
+      - 'tests/test_miles_steam_source.py'
+      - 'source/SteamDownload.cs'
+      - 'source/SteamTransfer/SteamSession.cs'
+      - 'source/SteamTransfer/TransferCore.cs'
+      - 'source/MainPage.xaml'
+      - 'source/MainPage.xaml.cs'
       - 'source/GameVersionSupport.cs'
       - 'source/ImportEngine.cs'
       - 'source/FolderImportEngine.cs'
@@ -38,5 +50,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Verify read-only game profile inspector
+      - name: Run Python tools and static launcher source preflight
         run: python3 -m unittest discover -s tests -p 'test_*.py' -v

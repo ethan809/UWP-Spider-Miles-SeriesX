@@ -1,6 +1,32 @@
 # Miles Morales on Xbox Series X — engineering status
 
-**Current status: research only. No booting or playable Xbox port.**
+**Current status: experimental Steam download-only implementation and runtime
+research. No booting or playable Xbox port. The new C# path has not been built
+or run on an Xbox.**
+
+## Experimental Miles Morales Steam downloader (stage 4)
+
+The Steam install panel now has a separate **Miles Morales (download only)**
+option. It uses the existing local SteamKit QR/Steam Guard sign-in flow, but
+requests **Steam app 1817190** rather than Remastered's app 1817070. It obtains
+the current public Steam manifests for Windows base depots **1817191** and
+**1817192**, plus English audio depot **1817194**. It requires ownership and
+refuses a manifest with invalid chunk structure or unexpected executable.
+
+The downloaded file bytes are verified against Steam's manifest SHA-1 and the
+individual chunks' Adler checksums. Existing Remastered downloads retain their
+exact pinned SHA-256 manifests. Steam game files are **never** checked into
+GitHub; they remain under `MilesMoralesSteam` in the launcher's game storage,
+separate from Remastered's `SteamDownload` directory. No Miles import receipt,
+Prepare or Play support is created. An explicit console confirmation warns that
+downloading **does not make the game playable**.
+
+On the reported public English Steam configuration, the PC install is about
+**47.4 GiB** before additional storage for safe file replacement. An Xbox needs
+more free space than the basic install size. The downloader currently handles
+**English only** and excludes DLC. It is a prototype: compiling UWP C# and
+authenticating to Steam on an actual Series X have not been verified in this
+environment. A successful Python preflight is *not* a verified game download.
 
 The fork's launcher identifies Miles Morales executable names in ZIP imports,
 Wi-Fi folder transfers and USB folder imports (if `Spider-Man.exe` is missing).

@@ -28,7 +28,10 @@ namespace SpiderManInstaller.SteamTransfer
         {
             if (Expected == null) throw new InvalidDataException("Missing file metadata.");
             ImportEngine.SafePath(Expected.Path);
-            if (Expected.Size < 0 || Expected.Hash == null || Expected.Hash.Length != 64 ||
+            // Pinned Remastered files use SHA-256; Steam's authenticated depot
+            // manifests expose SHA-1 for the separate Miles download path.
+            if (Expected.Size < 0 || Expected.Hash == null ||
+                (Expected.Hash.Length != 64 && Expected.Hash.Length != 40) ||
                 Expected.Hash.Any(c => !Uri.IsHexDigit(c)))
                 throw new InvalidDataException("Invalid supported-file metadata.");
             long end = 0;
@@ -91,10 +94,10 @@ namespace SpiderManInstaller.SteamTransfer
             return path;
         }
 
-        public static string Hash(Stream input, CancellationToken token)
+        public static string Hash(Stream input, CancellationToken token, bool steamManifestSha1 = false)
         {
             token.ThrowIfCancellationRequested();
-            using (var hash = SHA256.Create())
+            using (HashAlgorithm hash = steamManifestSha1 ? (HashAlgorithm)SHA1.Create() : SHA256.Create())
             {
                 var buffer = new byte[1024 * 1024];
                 int count;
@@ -115,7 +118,7 @@ namespace SpiderManInstaller.SteamTransfer
             if (!File.Exists(path) || new FileInfo(path).Length != expected.Size)
                 throw new InvalidDataException("Missing or wrong-sized supported game file: " + expected.Path);
             using (var input = File.OpenRead(path))
-                if (!string.Equals(Hash(input, token), expected.Hash, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(Hash(input, token, expected.Hash.Length == 40), expected.Hash, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("Unsupported or damaged game file: " + expected.Path);
         }
 
@@ -201,7 +204,7 @@ namespace SpiderManInstaller.SteamTransfer
                 stream.Flush();
                 stream.Position = 0;
                 progress.Stage("Verifying game files");
-                if (!string.Equals(Hash(stream, token), plan.Expected.Hash, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(Hash(stream, token, plan.Expected.Hash.Length == 40), plan.Expected.Hash, StringComparison.OrdinalIgnoreCase))
                 {
                     // A chunk checksum collision must not make every later resume fail.
                     stream.SetLength(0);

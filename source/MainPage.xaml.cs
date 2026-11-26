@@ -98,6 +98,24 @@ namespace SpiderManInstaller
             ApplicationData.Current.LocalSettings.Values["download-workers"]=SelectedWorkers();
         }
         int SelectedWorkers()=>DownloadWorkers.SelectedIndex==0?2:DownloadWorkers.SelectedIndex==2?8:4;
+        void SteamGame_Changed(object sender,SelectionChangedEventArgs e)
+        {
+            if(!uiReady)return;
+            bool miles=SteamGameList.SelectedIndex==1;
+            SteamLanguageList.IsEnabled=!busy&&!miles;
+            SteamInfo.Text=miles?
+                "Miles Morales: English Steam download only. No compatible Xbox runtime yet; Prepare and Play remain for Remastered.":
+                "Remastered: supported Steam version selected automatically. No password is stored.";
+        }
+        async Task<bool> ConfirmMilesDownload()
+        {
+            var notice=new ContentDialog {
+                Title="Download Miles Morales files only?",
+                Content="This downloads your purchased Windows PC game directly from Steam to a separate MilesMoralesSteam folder. It needs roughly 47.4 GiB of storage plus room for safe replacement. You must own Miles Morales on this Steam account.\n\nIMPORTANT: Miles Morales is NOT playable on Xbox with this launcher yet. Downloading does not install an Xbox game or enable the Remastered Play button.",
+                PrimaryButtonText="Download files",CloseButtonText="Cancel",DefaultButton=ContentDialogButton.Close,RequestedTheme=ElementTheme.Dark
+            };
+            return await notice.ShowAsync()==ContentDialogResult.Primary;
+        }
         void RefreshPreparation()
         {
             if(busy)return;
@@ -295,7 +313,7 @@ namespace SpiderManInstaller
             TransferSize.Text=TransferStats.Text=TransferPercent.Text="";
             Progress.Value=0;Progress.IsIndeterminate=true;
             cancellation = new CancellationTokenSource();
-            SteamButton.IsEnabled = SteamPasswordButton.IsEnabled = false;
+            SteamButton.IsEnabled = SteamPasswordButton.IsEnabled = SteamGameList.IsEnabled = false;
             SteamLanguageList.IsEnabled=false;DownloadLanguageButton.IsEnabled=false;
             PlayButton.IsEnabled=PrepareButton.IsEnabled=false;
             int workers=SelectedWorkers();
@@ -305,24 +323,37 @@ namespace SpiderManInstaller
             try
             {
                 local = GameStorage.OpenRoot();
-                var selected=languageOnly??SelectedSteamLanguage();
-                var catalogue=GamePreparation.LoadLanguagePacks();
-                var expected = languageOnly!=null?new List<ExpectedFile>{selected.File}:SteamLanguages.SelectFiles(await LoadExpected(),catalogue,selected.Language);
-                if(languageOnly!=null&&!GamePreparation.Ready())throw new IOException("Prepare the game before adding a voice pack.");
+                bool miles=languageOnly==null && SteamGameList.SelectedIndex==1;
+                if(miles && !await ConfirmMilesDownload()) { outcome="Miles Morales download cancelled. No files changed.";return; }
                 var free = GameStorage.FreeBytes(local);
                 var token = cancellation.Token;
-                if(usePassword)login=await AskSteamCredentials(token);
-                await Task.Run(() => SteamDownload.RunAsync(local, expected, free,
-                    text=>SteamStatus(text,generation), ShowSteamQr, token,
-                    snapshot=>SteamProgress(snapshot,generation),workers,login,usePassword?new SteamGuardUi(this):null,selected.Language,languageOnly!=null));
-                if(languageOnly!=null) {
-                    await Task.Run(()=>{
-                        var folder=Path.Combine(local,"SteamLanguages",selected.Language);
-                        SteamLanguages.InstallVoice(folder,LanguageGameRoot,selected,token);
-                        GameLanguageSettings.Apply(LanguageGameRoot,selected.Language,LanguageCatalogue());
-                    });
-                    outcome=selected.Label+" voice pack installed and selected. Restart the game to apply.";
-                } else outcome=selected.Label+" audio and game files verified. Choose Prepare game to enable Play.";
+                if(miles)
+                {
+                    if(usePassword)login=await AskSteamCredentials(token);
+                    await Task.Run(() => SteamDownload.RunMilesAsync(local,free,
+                        text=>SteamStatus(text,generation),ShowSteamQr,token,
+                        snapshot=>SteamProgress(snapshot,generation),workers,login,usePassword?new SteamGuardUi(this):null));
+                    outcome="Miles Morales Steam files downloaded and verified in MilesMoralesSteam. The game is not yet playable on Xbox.";
+                }
+                else
+                {
+                    var selected=languageOnly??SelectedSteamLanguage();
+                    var catalogue=GamePreparation.LoadLanguagePacks();
+                    var expected = languageOnly!=null?new List<ExpectedFile>{selected.File}:SteamLanguages.SelectFiles(await LoadExpected(),catalogue,selected.Language);
+                    if(languageOnly!=null&&!GamePreparation.Ready())throw new IOException("Prepare the game before adding a voice pack.");
+                    if(usePassword)login=await AskSteamCredentials(token);
+                    await Task.Run(() => SteamDownload.RunAsync(local, expected, free,
+                        text=>SteamStatus(text,generation), ShowSteamQr, token,
+                        snapshot=>SteamProgress(snapshot,generation),workers,login,usePassword?new SteamGuardUi(this):null,selected.Language,languageOnly!=null));
+                    if(languageOnly!=null) {
+                        await Task.Run(()=>{
+                            var folder=Path.Combine(local,"SteamLanguages",selected.Language);
+                            SteamLanguages.InstallVoice(folder,LanguageGameRoot,selected,token);
+                            GameLanguageSettings.Apply(LanguageGameRoot,selected.Language,LanguageCatalogue());
+                        });
+                        outcome=selected.Label+" voice pack installed and selected. Restart the game to apply.";
+                    } else outcome=selected.Label+" audio and game files verified. Choose Prepare game to enable Play.";
+                }
                 Progress.Value=100;TransferPercent.Text="100%";
             }
             catch (OperationCanceledException) { outcome="Download stopped. Sign in again to verify and resume partial files."; }
@@ -333,8 +364,8 @@ namespace SpiderManInstaller
                 downloadActive=false;++downloadGeneration;CancelButton.Visibility=Visibility.Collapsed;
                 ShowSteamQr(null);
                 cancellation.Dispose(); cancellation = null;
-                busy = false; SteamButton.IsEnabled = SteamPasswordButton.IsEnabled = true;
-                SteamLanguageList.IsEnabled=true;RefreshGameLanguages();
+                busy = false; SteamButton.IsEnabled = SteamPasswordButton.IsEnabled = SteamGameList.IsEnabled = true;
+                SteamLanguageList.IsEnabled=SteamGameList.SelectedIndex!=1;RefreshGameLanguages();
                 Progress.IsIndeterminate=false;TransferStats.Text="";
                 RefreshPreparation();RefreshStorage();
                 SteamInfo.Text=Status.Text=outcome;

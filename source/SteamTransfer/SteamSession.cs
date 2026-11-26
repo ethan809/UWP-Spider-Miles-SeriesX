@@ -15,7 +15,9 @@ namespace SpiderManInstaller.SteamTransfer
 {
     internal sealed class SteamSession
     {
-        const uint AppId = 1817070;
+        const uint RemasteredAppId = 1817070;
+        internal const uint MilesAppId = 1817190;
+        readonly uint appId;
         readonly SteamClient client;
         readonly CallbackManager callbacks;
         readonly SteamUser user;
@@ -35,8 +37,12 @@ namespace SpiderManInstaller.SteamTransfer
         bool closing;
 
         static TaskCompletionSource<T> NewCompletion<T>() => new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-        public SteamSession(IMachineInfoProvider identity, TransferTrace trace, CancellationToken token)
+        public SteamSession(IMachineInfoProvider identity, TransferTrace trace, CancellationToken token,
+            uint targetAppId = RemasteredAppId)
         {
+            if (targetAppId != RemasteredAppId && targetAppId != MilesAppId)
+                throw new ArgumentOutOfRangeException(nameof(targetAppId));
+            appId = targetAppId;
             this.trace = trace;
             lifetime = CancellationTokenSource.CreateLinkedTokenSource(token);
             client = new SteamClient(SteamConfiguration.Create(b => b.WithProtocolTypes(ProtocolTypes.WebSocket)
@@ -132,7 +138,7 @@ namespace SpiderManInstaller.SteamTransfer
                 trace.Record(TransferEvent.Authenticated);
                 var available = await Wait(client.GetHandler<SteamContent>().GetServersForSteamPipe()).ConfigureAwait(false);
                 servers = available.Where(s => s.Protocol == Server.ConnectionProtocol.HTTPS && !s.UseAsProxy &&
-                    !s.SteamChinaOnly && (s.AllowedAppIds.Length == 0 || s.AllowedAppIds.Contains(AppId)))
+                    !s.SteamChinaOnly && (s.AllowedAppIds.Length == 0 || s.AllowedAppIds.Contains(appId)))
                     .OrderByDescending(s => s.PreferredServer).ThenBy(s => s.WeightedLoad).Take(12).ToArray();
                 if (servers.Length == 0) throw new TransferProblem("Steam returned no compatible secure download servers.");
                 trace.Record(TransferEvent.Servers, servers.Length); cdn = new SteamKit2.CDN.Client(client);
@@ -170,25 +176,26 @@ namespace SpiderManInstaller.SteamTransfer
                 }
             }
         }
-        async Task<KeyValue> ReadLanguageProduct()
+        async Task<KeyValue> ReadAppProduct()
         {
             var apps=client.GetHandler<SteamApps>();
-            var tokens=await apps.PICSGetAccessTokens((uint?)AppId,null);
-            ulong access=0;tokens.AppTokens.TryGetValue(AppId,out access);
-            var info=await apps.PICSGetProductInfo(new SteamApps.PICSRequest(AppId,access),null);
+            var tokens=await apps.PICSGetAccessTokens((uint?)appId,null);
+            ulong access=0;tokens.AppTokens.TryGetValue(appId,out access);
+            var info=await apps.PICSGetProductInfo(new SteamApps.PICSRequest(appId,access),null);
             if(info.Failed || !info.Complete)throw new TransferProblem("Steam language metadata was incomplete. Retry the download.");
             foreach(var batch in info.Results)
-                if(batch.Apps.TryGetValue(AppId,out var product)&&!product.MissingToken)return product.KeyValues;
-            throw new TransferProblem("Steam did not grant access to game language metadata.");
+                if(batch.Apps.TryGetValue(appId,out var product)&&!product.MissingToken)return product.KeyValues;
+            throw new TransferProblem("Steam did not grant access to game depot metadata.");
         }
         public async Task<List<TransferFile>> ReadPlan(List<ExpectedFile> expected, CancellationToken token, string language="english", bool languageOnly=false)
         {
+            if (appId != RemasteredAppId) throw new InvalidOperationException("Pinned Remastered manifests cannot be used for Miles Morales.");
             var wanted = expected.ToDictionary(f => ImportEngine.SafePath(f.Path), StringComparer.OrdinalIgnoreCase);
             if (wanted.Keys.Any(p => p.StartsWith(".steamkit-transfer", StringComparison.OrdinalIgnoreCase) ||
                 p.Equals("import-receipt.txt", StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("Reserved download metadata path.");
             var planned = new Dictionary<string, TransferFile>(StringComparer.OrdinalIgnoreCase);
             var depots=SteamLanguages.Depots(language,languageOnly);
-            KeyValue product=depots.Any(d=>d.Manifest==0)?await Wait(ReadLanguageProduct()).ConfigureAwait(false):null;
+            KeyValue product=depots.Any(d=>d.Manifest==0)?await Wait(ReadAppProduct()).ConfigureAwait(false):null;
             foreach(var selected in depots)
             {
                 uint depot=selected.Id;
@@ -198,7 +205,7 @@ namespace SpiderManInstaller.SteamTransfer
                 if (keyResult.Result != EResult.OK || keyResult.DepotKey == null)
                     throw new TransferProblem("Steam denied access to depot " + depot + " (" + keyResult.Result + "). Ownership is required.");
                 byte[] key = keyResult.DepotKey; keys.Add(key);
-                ulong request = await Wait(client.GetHandler<SteamContent>().GetManifestRequestCode(depot, AppId, manifestId)).ConfigureAwait(false);
+                ulong request = await Wait(client.GetHandler<SteamContent>().GetManifestRequestCode(depot, appId, manifestId)).ConfigureAwait(false);
                 trace.Record(TransferEvent.ManifestAccess, ((long)depot << 1) | (request == 0 ? 0 : 1));
                 if (request == 0) throw new TransferProblem("Steam did not grant access to supported depot " + depot + ".");
                 var manifest = await Retry(server => cdn.DownloadManifestAsync(depot, manifestId, request, server, key), token).ConfigureAwait(false);
@@ -234,7 +241,77 @@ namespace SpiderManInstaller.SteamTransfer
             if (planned.Count != wanted.Count) throw new InvalidDataException("Steam manifests do not contain all files for the supported build.");
             return planned.Values.OrderBy(p => Priority(p.Expected.Path)).ThenBy(p => p.Expected.Path, StringComparer.OrdinalIgnoreCase).ToList();
         }
-        async Task<SteamApps.DepotKeyCallback> GetKey(uint depot) => await client.GetHandler<SteamApps>().GetDepotDecryptionKey(depot, AppId);
+        // Download-only: resolve the current *owned* Miles Morales public build.
+        // Never send these files through Remastered's preparation or Play paths.
+        public async Task<List<TransferFile>> ReadMilesPlan(CancellationToken token)
+        {
+            if (appId != MilesAppId) throw new InvalidOperationException("Miles download requires its own Steam app session.");
+            KeyValue product = await Wait(ReadAppProduct()).ConfigureAwait(false);
+            // Windows base assets, executable/DLLs, English audio. No optional DLC.
+            uint[] depots = { 1817191, 1817192, 1817194 };
+            var planned = new Dictionary<string, TransferFile>(StringComparer.OrdinalIgnoreCase);
+            long total = 0;
+            foreach (uint depot in depots)
+            {
+                token.ThrowIfCancellationRequested();
+                ulong manifestId = SteamLanguages.PublicManifest(product, depot, "english");
+                var keyResult = await Wait(GetKey(depot)).ConfigureAwait(false);
+                trace.Record(TransferEvent.DepotKeyResult, ((long)depot << 32) | (uint)keyResult.Result);
+                if (keyResult.Result != EResult.OK || keyResult.DepotKey == null)
+                    throw new TransferProblem("Steam denied access to Miles Morales depot " + depot + ". Check game ownership.");
+                byte[] key = keyResult.DepotKey;
+                keys.Add(key);
+                ulong request = await Wait(client.GetHandler<SteamContent>().GetManifestRequestCode(depot, appId, manifestId)).ConfigureAwait(false);
+                trace.Record(TransferEvent.ManifestAccess, ((long)depot << 1) | (request == 0 ? 0 : 1));
+                if (request == 0) throw new TransferProblem("Steam did not grant access to Miles Morales depot " + depot + ".");
+                var manifest = await Retry(server => cdn.DownloadManifestAsync(depot, manifestId, request, server, key), token).ConfigureAwait(false);
+                if (manifest.DepotID != depot || manifest.ManifestGID != manifestId || manifest.FilenamesEncrypted)
+                    throw new InvalidDataException("Steam Miles Morales manifest identity failed verification.");
+                foreach (var entry in manifest.Files)
+                {
+                    if ((entry.Flags & EDepotFileFlag.Directory) != 0) continue;
+                    if ((entry.Flags & EDepotFileFlag.Symlink) != 0 || !String.IsNullOrEmpty(entry.LinkTarget) ||
+                        entry.FileHash == null || entry.FileHash.Length != 20 || entry.TotalSize > (ulong)Int64.MaxValue)
+                        throw new InvalidDataException("Unsupported file in Miles Morales Steam manifest.");
+                    string name = ImportEngine.SafePath(entry.FileName).Replace('\\', '/');
+                    if (name.StartsWith(".steamkit-transfer/", StringComparison.OrdinalIgnoreCase) ||
+                        name.Equals(".steamkit-transfer", StringComparison.OrdinalIgnoreCase) ||
+                        name.Equals("import-receipt.txt", StringComparison.OrdinalIgnoreCase) ||
+                        name.Equals("steam-transfer.log", StringComparison.OrdinalIgnoreCase) ||
+                        planned.ContainsKey(name))
+                        throw new InvalidDataException("Reserved or duplicate Miles Morales depot file: " + name);
+                    var file = new ExpectedFile { Path = name, Size = checked((long)entry.TotalSize),
+                        Hash = BitConverter.ToString(entry.FileHash).Replace("-", "").ToLowerInvariant() };
+                    var transfer = new TransferFile { Expected = file };
+                    foreach (var raw in entry.Chunks)
+                    {
+                        if (raw.ChunkID == null || raw.ChunkID.Length != 20 || raw.Checksum == null || raw.Checksum.Length != 4)
+                            throw new InvalidDataException("Invalid Miles Morales Steam chunk identity.");
+                        var chunk = raw;
+                        transfer.Chunks.Add(new TransferChunk { Offset = checked((long)chunk.Offset),
+                            Length = checked((int)chunk.UncompressedLength), NetworkLength = chunk.CompressedLength,
+                            Matches = data => CryptoHelper.AdlerHash(data).SequenceEqual(chunk.Checksum),
+                            Fetch = async ct =>
+                            {
+                                var payload = await Retry(server => cdn.DownloadDepotChunkAsync(depot, chunk, server, key), ct).ConfigureAwait(false);
+                                if (!payload.IsProcessed) throw new InvalidDataException("Steam chunk verification failed.");
+                                return payload.Data;
+                            } });
+                    }
+                    transfer.Validate();
+                    planned.Add(name, transfer);
+                    total = checked(total + file.Size);
+                    if (planned.Count > 20000 || total > 80L * 1024 * 1024 * 1024)
+                        throw new InvalidDataException("Miles Morales Steam manifests exceed download safety limits.");
+                }
+                trace.Record(TransferEvent.Manifest, depot);
+            }
+            if (!planned.ContainsKey("MilesMorales.exe") || !planned.Keys.Any(p => p.StartsWith("asset_archive/", StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidDataException("Steam did not return a complete Miles Morales game build.");
+            return planned.Values.OrderBy(p => p.Expected.Path.Equals("MilesMorales.exe", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenBy(p => p.Expected.Path, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+        async Task<SteamApps.DepotKeyCallback> GetKey(uint depot) => await client.GetHandler<SteamApps>().GetDepotDecryptionKey(depot, appId);
         static int Priority(string name) => name.Equals("Spider-Man.exe", StringComparison.OrdinalIgnoreCase) ? 0 :
             name.Replace('\\', '/').Equals("asset_archive/toc", StringComparison.OrdinalIgnoreCase) ? 1 : 2;
         public async Task Close()
