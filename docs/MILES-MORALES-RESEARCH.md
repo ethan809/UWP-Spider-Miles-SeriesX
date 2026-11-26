@@ -29,7 +29,10 @@ python3 tools/inspect_miles.py "/path/to/Marvel's Spider-Man Miles Morales" --ou
 
 The script **does not run the game, modify game files, download files, or
 upload information**. It lists relative filenames and sizes and hashes the
-executable and `asset_archive/toc`. Add `--hash-assets` to generate an exact
+executable and `asset_archive/toc`. It also inspects the static Windows PE
+import table to identify DLL functions needed for a future native runtime.
+This does not catch dynamically loaded DLLs or prove runtime compatibility.
+Add `--hash-assets` to generate an exact
 SHA-256 file manifest; hashing the full game can take a long time.
 
 Do not commit generated profiles automatically. A profile can contain exact
@@ -37,6 +40,32 @@ details of a particular game installation or mods. Review the file first.
 Never share game files, Steam login details, saves, or signing keys.
 
 ## Requirements before calling this compatible
+
+### Native-runtime gap analysis (stage 3 started)
+
+The original project does not include the runtime. A separate open-source
+candidate is [Tiramisu](https://github.com/xanstomper/tiramisu), an MIT-licensed
+Xbox UWP x64 Windows-application runtime. Its November 2026 project notes
+describe D3D12 execution and AAA-title verification as incomplete/experimental.
+It is **not** a verified Miles Morales runtime. Do not assume its list of
+function names proves that DirectX 12 rendering or audio works in this game.
+
+The next investigation can compare a local Miles Morales profile's static
+PE imports against **audited** exports from a selected runtime:
+
+```bash
+python3 tools/runtime_gap.py miles-profile-local.json runtime-exports-local.json
+```
+
+The runtime exports file is JSON shaped like
+`{"exported_functions":{"d3d12.dll":["D3D12CreateDevice"]}}`.
+These must be *actual verified exports*, not guessed capabilities. The program
+prints missing symbols and explicitly does not claim a bootable game.
+
+Actual Series X testing requires a legitimately owned PC copy and access to
+the developer-mode console or its logs. Neither is present in this repository.
+
+### Implementation gates
 
 - Obtain a verifiable manifest for one *specific* Miles Morales PC build,
   including its executable, asset archive and required DLLs. Keep normal
@@ -53,7 +82,7 @@ Never share game files, Steam login details, saves, or signing keys.
 ## Checks
 
 ```bash
-python3 -m unittest discover -s tests -p 'test_inspect_miles.py' -v
+python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
 Passing these tests validates only the read-only inspection tool. It is not

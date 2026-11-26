@@ -4,7 +4,11 @@ on:
   push:
     paths:
       - 'tools/inspect_miles.py'
+      - 'tools/pe_imports.py'
+      - 'tools/runtime_gap.py'
       - 'tests/test_inspect_miles.py'
+      - 'tests/test_pe_imports.py'
+      - 'tests/test_runtime_gap.py'
       - 'source/GameVersionSupport.cs'
       - 'source/ImportEngine.cs'
       - 'source/FolderImportEngine.cs'
@@ -14,7 +18,11 @@ on:
   pull_request:
     paths:
       - 'tools/inspect_miles.py'
+      - 'tools/pe_imports.py'
+      - 'tools/runtime_gap.py'
       - 'tests/test_inspect_miles.py'
+      - 'tests/test_pe_imports.py'
+      - 'tests/test_runtime_gap.py'
       - 'source/GameVersionSupport.cs'
       - 'source/ImportEngine.cs'
       - 'source/FolderImportEngine.cs'
@@ -31,4 +39,4 @@ jobs:
         with:
           python-version: '3.12'
       - name: Verify read-only game profile inspector
-        run: python3 -m unittest discover -s tests -p 'test_inspect_miles.py' -v
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v

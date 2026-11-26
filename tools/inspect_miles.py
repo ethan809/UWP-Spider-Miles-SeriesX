@@ -15,6 +15,8 @@ from pathlib import Path
 import struct
 import sys
 
+from pe_imports import PeInspectionError, scan_imports
+
 TITLE = "Marvel's Spider-Man: Miles Morales"
 STEAM_APP_ID = 1817190
 EXECUTABLE = "MilesMorales.exe"
@@ -83,6 +85,13 @@ def inspect(root: Path, hash_assets: bool = False) -> dict:
                 entry["sha256"] = sha256_file(path)
             entries.append(entry)
 
+    try:
+        imported_functions = scan_imports(exe)
+        import_scan_error = None
+    except PeInspectionError as exc:
+        imported_functions = {}
+        import_scan_error = str(exc)
+
     return {
         "schema_version": 1,
         "title": TITLE,
@@ -93,6 +102,8 @@ def inspect(root: Path, hash_assets: bool = False) -> dict:
         "file_count": len(entries),
         "total_bytes": total_size,
         "fully_hashed": hash_assets,
+        "static_imports": imported_functions,
+        "static_import_scan_error": import_scan_error,
         "files": entries,
     }
 

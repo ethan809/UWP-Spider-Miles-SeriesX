@@ -68,8 +68,12 @@ asset-preparation/*Tests.cs
 # Miles Morales compatibility research is separate from the playable runtime.
 !tools/
 !tools/inspect_miles.py
+!tools/pe_imports.py
+!tools/runtime_gap.py
 !tests/
 !tests/test_inspect_miles.py
+!tests/test_pe_imports.py
+!tests/test_runtime_gap.py
 !.github/
 !.github/workflows/
 !.github/workflows/miles-research-checks.yml
