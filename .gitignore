@@ -70,10 +70,12 @@ asset-preparation/*Tests.cs
 !tools/inspect_miles.py
 !tools/pe_imports.py
 !tools/runtime_gap.py
+!tools/miles_boot_report.py
 !tests/
 !tests/test_inspect_miles.py
 !tests/test_pe_imports.py
 !tests/test_runtime_gap.py
+!tests/test_miles_boot_report.py
 !tests/test_miles_steam_source.py
 !.github/
 !.github/workflows/

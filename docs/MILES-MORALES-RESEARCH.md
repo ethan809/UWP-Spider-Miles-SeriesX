@@ -4,6 +4,12 @@
 research. No booting or playable Xbox port. The new C# path has not been built
 or run on an Xbox.**
 
+For a first *actual* boot attempt on a Series X, see
+[MILES-BOOT-TEST.md](MILES-BOOT-TEST.md). It uses the separately released
+Tiramisu native PE runtime with an owned Steam download and title-specific
+console logging; it does not assume the fork's uncompiled download code boots
+anything.
+
 ## Experimental Miles Morales Steam downloader (stage 4)
 
 The Steam install panel now has a separate **Miles Morales (download only)**
