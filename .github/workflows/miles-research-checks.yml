@@ -1,0 +1,34 @@
+name: Miles Morales preflight checks
+
+on:
+  push:
+    paths:
+      - 'tools/inspect_miles.py'
+      - 'tests/test_inspect_miles.py'
+      - 'source/GameVersionSupport.cs'
+      - 'source/ImportEngine.cs'
+      - 'source/FolderImportEngine.cs'
+      - 'source/WifiFolderTransfer.cs'
+      - 'source/WifiTransfer.html'
+      - '.github/workflows/miles-research-checks.yml'
+  pull_request:
+    paths:
+      - 'tools/inspect_miles.py'
+      - 'tests/test_inspect_miles.py'
+      - 'source/GameVersionSupport.cs'
+      - 'source/ImportEngine.cs'
+      - 'source/FolderImportEngine.cs'
+      - 'source/WifiFolderTransfer.cs'
+      - 'source/WifiTransfer.html'
+      - '.github/workflows/miles-research-checks.yml'
+
+jobs:
+  inspect-tool-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify read-only game profile inspector
+        run: python3 -m unittest discover -s tests -p 'test_inspect_miles.py' -v

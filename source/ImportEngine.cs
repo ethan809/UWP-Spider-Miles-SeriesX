@@ -63,6 +63,9 @@ namespace SpiderManInstaller
                     if (all.ContainsKey(safe)) throw new InvalidDataException("Duplicate ZIP filename: " + safe);
                     all.Add(safe, entry);
                 }
+                // A Miles Morales ZIP needs a different native host and asset
+                // manifest. Detect it explicitly before any destination is made.
+                GameVersionSupport.RejectMilesMorales(all.Keys);
                 var executable = all.Keys.Where(k => k.Equals("Spider-Man.exe", StringComparison.OrdinalIgnoreCase) ||
                     k.EndsWith("/Spider-Man.exe", StringComparison.OrdinalIgnoreCase)).ToArray();
                 if (executable.Length != 1) throw new InvalidDataException("ZIP must contain exactly one Spider-Man.exe and its game folder.");

@@ -64,3 +64,12 @@ asset-preparation/*Tests.cs
 !source/SteamFiles40630.json
 !asset-preparation/pipelines/pipeline-map-40630.tsv
 !asset-preparation/pipelines/compute-map-40630.tsv
+
+# Miles Morales compatibility research is separate from the playable runtime.
+!tools/
+!tools/inspect_miles.py
+!tests/
+!tests/test_inspect_miles.py
+!.github/
+!.github/workflows/
+!.github/workflows/miles-research-checks.yml

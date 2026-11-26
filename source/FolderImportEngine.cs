@@ -18,6 +18,17 @@ namespace SpiderManInstaller
     {
         static string Hex(byte[] bytes) => BitConverter.ToString(bytes).Replace("-", "").ToLowerInvariant();
 
+        static async Task CheckForMilesMorales(IFolderImportSource source, CancellationToken cancel)
+        {
+            try
+            {
+                using(var candidate=await source.OpenReadAsync(GameVersionSupport.MilesExecutable,cancel).ConfigureAwait(false))
+                    throw new InvalidDataException(GameVersionSupport.MilesNotReadyMessage);
+            }
+            catch(FileNotFoundException) { }
+            catch(DirectoryNotFoundException) { }
+        }
+
         static async Task<string> Hash(Stream stream, CancellationToken cancel)
         {
             using (var hash = SHA256.Create())
@@ -39,9 +50,15 @@ namespace SpiderManInstaller
             cancel.ThrowIfCancellationRequested();
             if (Directory.Exists(destination) || File.Exists(destination)) throw new IOException("Import destination already exists.");
             if (expected == null || expected.Count < 2) throw new InvalidDataException("Invalid version manifest.");
-            using(var executable=await source.OpenReadAsync("Spider-Man.exe",cancel).ConfigureAwait(false)) {
-                if(!executable.CanSeek)throw new InvalidDataException("Game executable must be seekable.");
-                expected=GameVersionSupport.Select(expected,executable.Length,await Hash(executable,cancel).ConfigureAwait(false));
+            try {
+                using(var executable=await source.OpenReadAsync("Spider-Man.exe",cancel).ConfigureAwait(false)) {
+                    if(!executable.CanSeek)throw new InvalidDataException("Game executable must be seekable.");
+                    expected=GameVersionSupport.Select(expected,executable.Length,await Hash(executable,cancel).ConfigureAwait(false));
+                }
+            }
+            catch(FileNotFoundException) {
+                await CheckForMilesMorales(source,cancel).ConfigureAwait(false);
+                throw;
             }
             if (languages != null) expected = await LanguageImports.SelectAsync(source, expected, languages, cancel).ConfigureAwait(false);
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

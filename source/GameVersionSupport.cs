@@ -10,6 +10,17 @@ namespace SpiderManInstaller
     public static class GameVersionSupport
     {
         public const string Original="3.0618",Newer="4.0630";
+        // Recognize the separate PC game without misidentifying it as Remastered.
+        // A Miles-specific native runtime, asset recipes and verified build manifest
+        // do not exist in this public source tree. Never prepare it with Remastered data.
+        public const string MilesExecutable="MilesMorales.exe";
+        public const string MilesNotReadyMessage="Marvel's Spider-Man: Miles Morales was detected, but this Xbox launcher cannot run it yet. The Miles Morales runtime, verified build manifest and asset preparation are not available. No game files were changed.";
+        public static void RejectMilesMorales(IEnumerable<string> paths)
+        {
+            if(paths.Any(path=>String.Equals(path.Replace('\\','/'),MilesExecutable,StringComparison.OrdinalIgnoreCase) ||
+                path.Replace('\\','/').EndsWith("/"+MilesExecutable,StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidDataException(MilesNotReadyMessage);
+        }
         public const long NewExecutableSize=121901008;
         public const string NewExecutableHash="e297d4d94f1ffe4febf289745e79e7b6fa233a788e7a00f480fc77c55db81ad1";
         public const string OriginalExecutableHash="9154e4e7bedbc5704da75ed1a362286bfc287d4cab5168c4ce6d22da18f94db1";

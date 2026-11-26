@@ -42,6 +42,7 @@ namespace SpiderManInstaller
                     throw new InvalidDataException("Invalid or duplicate folder entry.");
                 available.Add(name,file.Value);
             }
+            GameVersionSupport.RejectMilesMorales(available.Keys);
             if(!available.ContainsKey("Spider-Man.exe"))throw new InvalidDataException("Missing Spider-Man.exe.");
             var versionManifest=GameVersionSupport.Plan(manifest,available["Spider-Man.exe"]);
             var next=LanguageImports.Select(versionManifest,languages,p=>available.ContainsKey(p)?(long?)available[p]:null)
